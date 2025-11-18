@@ -1,3 +1,9 @@
+"""
+Code for desktop grasp task
+Reference:
+https://github.com/haosulab/ManiSkill/blob/main/mani_skill/envs/tasks/tabletop/pick_single_ycb.py
+"""
+
 from typing import Any, Union
 
 import numpy as np
