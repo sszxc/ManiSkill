@@ -1,5 +1,6 @@
 import os.path as osp
 from pathlib import Path
+from typing import List
 
 import numpy as np
 import sapien
@@ -17,7 +18,13 @@ class TableSceneBuilder(SceneBuilder):
     """A simple scene builder that adds a table to the scene such that the height of the table is at 0, and
     gives reasonable initial poses for robots."""
 
-    def build(self):
+    def build(self, random_height: bool = False):
+        if random_height:
+            self.table_height = 0.1
+            # self.table_height = self.env._episode_rng.uniform(0.5, 1.0)
+        else:
+            self.table_height = 0.9196429
+
         builder = self.scene.create_actor_builder()
         model_dir = Path(osp.dirname(__file__)) / "assets"
         table_model_file = str(model_dir / "table.glb")
@@ -30,31 +37,39 @@ class TableSceneBuilder(SceneBuilder):
         #     pose=table_pose,
         # )
         builder.add_box_collision(
-            pose=sapien.Pose(p=[0, 0, 0.9196429 / 2]),
-            half_size=(2.418 / 2, 1.209 / 2, 0.9196429 / 2),
+            pose=sapien.Pose(p=[0, 0, self.table_height / 2]),
+            half_size=(2.418 / 2, 1.209 / 2, self.table_height / 2),
         )
+        # if using random height, need to scale the visual model based on the height ratio
+        if random_height:
+            height_scale = self.table_height / 0.9196429
+            visual_scale = (scale, scale, scale * height_scale)
+        else:
+            visual_scale = (scale, scale, scale)
         builder.add_visual_from_file(
-            filename=table_model_file, scale=[scale] * 3, pose=table_pose
+            filename=table_model_file, scale=visual_scale, pose=table_pose
         )
         builder.initial_pose = sapien.Pose(
-            p=[-0.12, 0, -0.9196429], q=euler2quat(0, 0, np.pi / 2)
+            p=[-0.12, 0, -self.table_height], q=euler2quat(0, 0, np.pi / 2)
         )
         table = builder.build_kinematic(name="table-workspace")
-        # aabb = (
-        #     table._objs[0]
-        #     .find_component_by_type(sapien.render.RenderBodyComponent)
-        #     .compute_global_aabb_tight()
-        # )
-        # value of the call above is saved below
-        aabb = np.array(
-            [
-                [-0.7402168, -1.2148621, -0.91964257],
-                [0.4688596, 1.2030163, 3.5762787e-07],
-            ]
+        aabb = (
+            table._objs[0]
+            .find_component_by_type(sapien.render.RenderBodyComponent)
+            .compute_global_aabb_tight()
         )
+        # value of the call above is saved below
+        # aabb = np.array(
+        #     [
+        #         [-0.7402168, -1.2148621, -0.91964257],
+        #         [0.4688596, 1.2030163, 3.5762787e-07],
+        #     ]
+        # )
         self.table_length = aabb[1, 0] - aabb[0, 0]
         self.table_width = aabb[1, 1] - aabb[0, 1]
-        self.table_height = aabb[1, 2] - aabb[0, 2]
+        # if using random height, keep the previously set random height value, don't use AABB to overwrite it
+        if not random_height:
+            self.table_height = aabb[1, 2] - aabb[0, 2]
         floor_width = 100
         if self.scene.parallel_in_single_scene:
             floor_width = 500
@@ -62,13 +77,12 @@ class TableSceneBuilder(SceneBuilder):
             self.scene, floor_width=floor_width, altitude=-self.table_height
         )
         self.table = table
-        self.scene_objects: list[sapien.Entity] = [self.table, self.ground]
+        self.scene_objects: List[sapien.Entity] = [self.table, self.ground]
 
     def initialize(self, env_idx: torch.Tensor):
-        # table_height = 0.9196429
         b = len(env_idx)
         self.table.set_pose(
-            sapien.Pose(p=[-0.12, 0, -0.9196429], q=euler2quat(0, 0, np.pi / 2))
+            sapien.Pose(p=[-0.12, 0, -self.table_height], q=euler2quat(0, 0, np.pi / 2))
         )
         if self.env.robot_uids == "panda":
             qpos = np.array(
