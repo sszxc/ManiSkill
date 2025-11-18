@@ -24,7 +24,7 @@ class Vega(BaseAgent):
 
     # ---------- keyframes ---------- #
     _rest_qpos = np.zeros(39)
-    _rest_qpos[0] = 0.35  # 低头角度
+    _rest_qpos[0] = 0.35  # head down angle
     _rest_qpos[1] = 1.57
     _rest_qpos[4] = 1.55
     _rest_qpos[7] = 1.57
@@ -256,7 +256,7 @@ class Vega(BaseAgent):
             # ),
         ]
 
-    # 需要设置摩擦力的链接
+    # links that need to set friction
     _contact_link_names = ['R_hand_base', 'R_th_l0', 'R_ff_l1', 'R_mf_l1', 'R_rf_l1', 'R_lf_l1', 'R_th_l1', 'R_ff_l2', 'R_mf_l2', 'R_rf_l2', 'R_lf_l2', 'R_th_l2', 'R_ff_tip', 'R_mf_tip', 'R_rf_tip', 'R_lf_tip', 'R_th_tip']
 
     urdf_config = dict(
@@ -290,48 +290,45 @@ class Vega(BaseAgent):
             max_relative_velocity (float, optional): Maximum relative velocity to consider a link as candidate. Defaults to 0.5.
             max_angle (int, optional): Maximum angle between the two force directions (degrees). Defaults to 85.
         """
-        # 定义链接分组
+        # define link groups
         thumb_link_names = ['R_th_l0', 'R_th_l1', 'R_th_l2', 'R_th_tip']
         finger_link_names = ['R_ff_l1', 'R_mf_l1', 'R_rf_l1', 'R_lf_l1', 
                             'R_ff_l2', 'R_mf_l2', 'R_rf_l2', 'R_lf_l2', 
                             'R_ff_tip', 'R_mf_tip', 'R_rf_tip', 'R_lf_tip']
         
-        # 获取所有链接及其名称
+        # get all links and their names
         all_link_names = thumb_link_names + finger_link_names
         link_dict = {name: self.robot.links_map[name] for name in all_link_names if name in self.robot.links_map}
         
-        # 获取物体的位置和速度
+        # get the object's position and velocity
         object_pos = object.pose.p  # (batch_size, 3)
         object_vel = object.linear_velocity  # (batch_size, 3)
         
-        # 第一步：用相对距离和相对速度过滤候选链接
+        # step 1: filter candidate links using relative distance and relative velocity
         candidate_links = []
         for link_name, link in link_dict.items():
             link_pos = link.pose.p  # (batch_size, 3)
             link_vel = link.linear_velocity  # (batch_size, 3)
             
-            # 计算相对距离
             relative_distance = torch.linalg.norm(link_pos - object_pos, dim=1)  # (batch_size,)
-            
-            # 计算相对速度
             relative_velocity = torch.linalg.norm(link_vel - object_vel, dim=1)  # (batch_size,)
             
-            # 过滤条件：距离小于阈值且相对速度小于阈值
+            # filter conditions: distance less than threshold and relative velocity less than threshold
             is_candidate = torch.logical_and(
                 relative_distance <= max_distance,
                 relative_velocity <= max_relative_velocity
             )
             
-            # 如果至少有一个batch满足条件，则加入候选列表
+            # if at least one batch satisfies the condition, add to candidate list
             if torch.any(is_candidate):
                 candidate_links.append((link_name, link, is_candidate))
         
         if len(candidate_links) == 0:
-            # 如果没有候选链接，返回False
+            # if there are no candidate links, return False
             batch_size = object_pos.shape[0]
             return torch.zeros(batch_size, dtype=torch.bool, device=object_pos.device)
         
-        # 第二步：分组并计算有效接触的链接
+        # step 2: group and calculate the valid contact links
         thumb_links = []
         finger_links = []
         
@@ -341,7 +338,7 @@ class Vega(BaseAgent):
             elif link_name in finger_link_names:
                 finger_links.append((link, is_candidate))
         
-        # 第三步：计算有效接触的链接（力的大小大于min_force）
+        # step 3: calculate the valid contact links (force magnitude greater than min_force)
         thumb_contact_forces = []
         finger_contact_forces = []
         
@@ -352,10 +349,10 @@ class Vega(BaseAgent):
             contact_forces = self.scene.get_pairwise_contact_forces(link, object)  # (batch_size, 3)
             force_magnitude = torch.linalg.norm(contact_forces, dim=1)  # (batch_size,)
             
-            # 只在候选链接中且力大于阈值时考虑
+            # only consider candidate links and force magnitude greater than threshold
             valid_contact = torch.logical_and(is_candidate, force_magnitude >= min_force)
             
-            # 只保留有效接触的力
+            # only keep the valid contact forces
             valid_forces = contact_forces * valid_contact.unsqueeze(1).float()
             thumb_contact_forces.append(valid_forces)
         
@@ -363,32 +360,32 @@ class Vega(BaseAgent):
             contact_forces = self.scene.get_pairwise_contact_forces(link, object)  # (batch_size, 3)
             force_magnitude = torch.linalg.norm(contact_forces, dim=1)  # (batch_size,)
             
-            # 只在候选链接中且力大于阈值时考虑
+            # only consider candidate links and force magnitude greater than threshold
             valid_contact = torch.logical_and(is_candidate, force_magnitude >= min_force)
             
-            # 只保留有效接触的力
+            # only keep the valid contact forces
             valid_forces = contact_forces * valid_contact.unsqueeze(1).float()
             finger_contact_forces.append(valid_forces)
         
-        # 如果两组都没有有效接触，返回False
+        # if both groups have no valid contact, return False
         if len(thumb_contact_forces) == 0 or len(finger_contact_forces) == 0:
             return torch.zeros(batch_size, dtype=torch.bool, device=device)
         
-        # 第四步：计算两组的总力方向，检查是否相对
-        # 计算总力
+        # step 4: calculate the total force direction of both groups, check if they are opposing
+        # calculate the total force direction of both groups
         thumb_total_force = torch.stack(thumb_contact_forces, dim=0).sum(dim=0)  # (batch_size, 3)
         finger_total_force = torch.stack(finger_contact_forces, dim=0).sum(dim=0)  # (batch_size, 3)
         
-        # 计算总力的大小
+        # calculate the total force magnitude
         thumb_force_magnitude = torch.linalg.norm(thumb_total_force, dim=1)  # (batch_size,)
         finger_force_magnitude = torch.linalg.norm(finger_total_force, dim=1)  # (batch_size,)
         
-        # 检查两组都有足够的力
+        # check if both groups have enough force
         has_thumb_force = thumb_force_magnitude >= min_force
         has_finger_force = finger_force_magnitude >= min_force
         
-        # 计算两组力方向之间的角度（只在两组都有力时计算）
-        # 对于没有足够力的情况，角度设为0（这样is_opposing会是False）
+        # calculate the angle between the two groups of force directions (only calculate when both groups have enough force)
+        # for the case where there is not enough force, set the angle to 0 (so is_opposing will be False)
         angle = torch.zeros(batch_size, device=device)
         valid_mask = torch.logical_and(has_thumb_force, has_finger_force)
         if torch.any(valid_mask):
@@ -399,17 +396,17 @@ class Vega(BaseAgent):
         
         angle_deg = torch.rad2deg(angle)  # (batch_size,)
         
-        # 检查角度是否接近180度（方向相对）
-        # 角度应该在 (180 - max_angle) 到 (180 + max_angle) 之间，但由于角度范围是0-180，我们检查是否 >= (180 - max_angle)
+        # check if the angle is close to 180 degrees (opposing direction)
+        # the angle should be between (180 - max_angle) and (180 + max_angle), but since the angle range is 0-180, we check if >= (180 - max_angle)
         is_opposing = angle_deg >= (180 - max_angle)
         
-        # 最终判断：两组都有足够的力，且方向相对
+        # final judgment: both groups have enough force and are opposing
         result = torch.logical_and(
             torch.logical_and(has_thumb_force, has_finger_force),
             is_opposing
         )
         
-        print(f"Get {torch.sum(result)} valid grasp in {batch_size} candidates")
+        # print(f"Get {torch.sum(result)} valid grasp in {batch_size} candidates")
         return result
 
 

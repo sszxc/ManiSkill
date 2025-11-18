@@ -299,8 +299,9 @@ class PickSingleYCBEnv(BaseEnv):
         r6. task success reward: give reward when the task is successful
 
         penalties:
-        p1. object falling: give penalty when the object falls
-        p2. arm collision: give penalty when the arm collides with the object
+        p1. relative velocity penalty: punish the relative velocity between tcp and object
+        p2. object falling penalty: give penalty when the object falls
+        p3. arm collision penalty: give penalty when the arm collides with the object
         
         Args:
             obs: observation
@@ -340,21 +341,25 @@ class PickSingleYCBEnv(BaseEnv):
         # r6. task success reward
         reward[info["success"]] = 6
         
-        # p1.a object falling penalty
+        # p1 relative velocity penalty
+        tcp_obj_vel = self.obj.linear_velocity - self.agent.tcp.linear_velocity
+        reward -= torch.linalg.norm(tcp_obj_vel, axis=1) * 0.1
+
+        # p2.a object falling penalty
         # object_z = self.obj.pose.p[:, 2]
         # table_z = self.table_scene.table_height
         # object_z_below_table_z = object_z < table_z
         # reward -= object_z_below_table_z.float() * 1.0
         # # print(f"detected {torch.sum(object_z_below_table_z)} of {object_z.shape[0]} objects falling")
 
-        # p1.b object away from goal penalty
+        # p2.b object away from goal penalty
         obj_to_goal_dist = torch.linalg.norm(
             self.goal_site.pose.p - self.obj.pose.p, axis=1
         )
         reward -= (obj_to_goal_dist > 0.5).float() * 1.0
         # print(f"detected {torch.sum(obj_to_goal_dist > 0.5)} of {obj_to_goal_dist.shape[0]} objects too far from goal")
         
-        # p2. arm collision penalty
+        # p3. arm collision penalty
         if self.robot_uids == "vega":
             arm_link_names = [
                 'R_arm_l1', 'R_arm_l2', 'R_arm_l3', 'R_arm_l4', 'R_arm_l5', 'R_arm_l6', 'R_arm_l7', 'R_arm_l8',
