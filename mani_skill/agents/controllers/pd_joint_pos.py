@@ -199,6 +199,9 @@ class PDJointPosMimicController(PDJointPosController):
 
     def _get_joint_limits(self):
         joint_limits = super()._get_joint_limits()
+        # 确保 joint_limits 是 numpy 数组
+        if isinstance(joint_limits, torch.Tensor):
+            joint_limits = joint_limits.cpu().numpy()
         joint_limits = joint_limits[self.control_joint_indices.cpu().numpy()]
         if len(joint_limits.shape) == 1:
             joint_limits = joint_limits[None, :]
