@@ -129,7 +129,7 @@ class PickSingleYCBEnv(BaseEnv):
     @property
     def _default_human_render_camera_configs(self):
         """return the camera configurations for human rendering(higher resolution)"""
-        pose = sapien_utils.look_at([0.6, 0.7, 0.6], [0.0, 0.0, 0.35])
+        pose = sapien_utils.look_at([0.6, 0.8, 0.6], [0.0, 0.3, 0.35])
         return CameraConfig("render_camera", pose, 512, 512, 1, 0.01, 100)
 
     def _load_agent(self, options: dict):

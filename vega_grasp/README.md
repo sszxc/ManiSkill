@@ -2,6 +2,8 @@
 
 This is a reinforcement learning project for the Vega robot to grasp and place objects from the YCB dataset.
 
+![Vega Grasp](./screenshot.png)
+
 ## Installation
 
 ```bash
