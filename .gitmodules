@@ -1,0 +1,3 @@
+[submodule "vega_grasp/dexmate-urdf"]
+	path = vega_grasp/dexmate-urdf
+	url = git@github.com:dexmate-ai/dexmate-urdf.git

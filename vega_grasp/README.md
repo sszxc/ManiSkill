@@ -7,10 +7,13 @@ This is a reinforcement learning project for the Vega robot to grasp and place o
 ## Installation
 
 ```bash
+git clone --recurse-submodules git@github.com:sszxc/ManiSkill.git
 conda env create -f environment.yml
 conda activate vegagrasp
 pip install -e .
 ```
+
+Note: Comment out all <mimic joint="..."> tags in vega_grasp/dexmate-urdf/robots/humanoid/vega_1/vega_upper_body.urdf, otherwise it will cause conflicts with Sapien.
 
 ## Usage
 
